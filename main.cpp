@@ -128,10 +128,10 @@ The Dynamic Island intelligently expands to display context-aware dashboards. Yo
   - AlwaysOnTop: true
     $name: Always on top
     $description: Keeps the island above all other windows. Turn this off if it blocks other apps.
-  - ExpandOnHover: true
+  - ExpandOnHover: false
     $name: Expand on hover
     $description: Expand the island automatically when hovered. If disabled, click to expand.
-  - AnimationSpeed: normal
+  - AnimationSpeed: fast
     $name: Animation speed
     $description: How fast the island expands and collapses.
     $options:
@@ -271,6 +271,7 @@ namespace
     constexpr wchar_t kWindowClass[] = L"Windhawk.DynamicIslandForWindows";
     constexpr UINT WM_APP_LAYOUT_CHANGED = WM_APP + 0x442;
     constexpr UINT WM_APP_NEW_EVENT = WM_APP + 0x443;
+    constexpr UINT_PTR kSingleClickTimerId = 0x1D; // defers the single-click Action Center action
     constexpr float kRenderPadX = 28.0f;
     constexpr float kRenderPadY = 22.0f;
 
@@ -533,6 +534,7 @@ namespace
     std::atomic<int> g_pressedMediaButton = -1;
     std::atomic<bool> g_dragCandidate = false;
     std::atomic<bool> g_isDragging = false;
+    std::atomic<bool> g_ignoreNextButtonUp = false; // set by WM_LBUTTONDBLCLK
     POINT g_dragCandidateStart = {};
     int g_dragStartOffsetX = 0;
     int g_dragStartOffsetY = 0;
@@ -3194,6 +3196,23 @@ namespace
         inputs[1].ki.wVk = 0x41; // 'A'
         inputs[2].type = INPUT_KEYBOARD;
         inputs[2].ki.wVk = 0x41; // 'A'
+        inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
+        inputs[3].type = INPUT_KEYBOARD;
+        inputs[3].ki.wVk = VK_LWIN;
+        inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+        SendInput(4, inputs, sizeof(INPUT));
+    }
+
+    // Opens the native Windows Notification Center by simulating Win+N.
+    void OpenNotificationCenter()
+    {
+        INPUT inputs[4] = {};
+        inputs[0].type = INPUT_KEYBOARD;
+        inputs[0].ki.wVk = VK_LWIN;
+        inputs[1].type = INPUT_KEYBOARD;
+        inputs[1].ki.wVk = 0x4E; // 'N'
+        inputs[2].type = INPUT_KEYBOARD;
+        inputs[2].ki.wVk = 0x4E; // 'N'
         inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
         inputs[3].type = INPUT_KEYBOARD;
         inputs[3].ki.wVk = VK_LWIN;
@@ -6592,6 +6611,14 @@ void OpenRelevantApp() {
 
         case WM_LBUTTONUP:
         {
+            // Trailing release of a double-click — swallow it so it doesn't
+            // schedule a single-click action or re-open Action Center.
+            if (g_ignoreNextButtonUp.exchange(false))
+            {
+                ReleaseCapture();
+                return 0;
+            }
+
             if (g_pressedMediaButton.load() != -1)
             {
                 g_pressedMediaButton = -1;
@@ -6688,9 +6715,21 @@ void OpenRelevantApp() {
                 }
             }
 
-            OpenActionCenter();
+            // Defer opening Action Center by the system double-click interval so
+            // a double-click can be distinguished from a single click. If no
+            // second click arrives, WM_TIMER fires the single-click action.
+            SetTimer(hwnd, kSingleClickTimerId, GetDoubleClickTime(), nullptr);
         }
             return 0;
+
+        case WM_TIMER:
+            if (wParam == kSingleClickTimerId)
+            {
+                KillTimer(hwnd, kSingleClickTimerId);
+                OpenActionCenter();
+                return 0;
+            }
+            break;
 
         case WM_CAPTURECHANGED:
             if (g_isDragging.load())
@@ -6708,7 +6747,14 @@ void OpenRelevantApp() {
             return 0;
 
         case WM_LBUTTONDBLCLK:
-            Wh_SetIntValue(L"PinnedExpanded", Wh_GetIntValue(L"PinnedExpanded", 0) ? 0 : 1);
+            // Cancel the pending single-click Action Center action.
+            KillTimer(hwnd, kSingleClickTimerId);
+            // Discard any drag state and swallow the trailing button-up.
+            g_dragCandidate = false;
+            g_isDragging = false;
+            g_pressedMediaButton = -1;
+            g_ignoreNextButtonUp = true;
+            OpenNotificationCenter();
             return 0;
 
         case WM_MOUSEWHEEL:
@@ -6743,6 +6789,7 @@ void OpenRelevantApp() {
 
         case WM_RBUTTONUP:
         {
+            KillTimer(hwnd, kSingleClickTimerId);
             POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             ClientToScreen(hwnd, &pt);
             ShowContextMenu(hwnd, pt);
@@ -6768,6 +6815,7 @@ void OpenRelevantApp() {
 
         WNDCLASSEXW wc = {};
         wc.cbSize = sizeof(wc);
+        wc.style = CS_DBLCLKS;
         wc.lpfnWndProc = OverlayWndProc;
         wc.hInstance = GetModuleHandleW(nullptr);
         wc.lpszClassName = kWindowClass;
