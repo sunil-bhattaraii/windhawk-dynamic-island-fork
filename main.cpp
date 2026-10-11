@@ -131,6 +131,22 @@ The Dynamic Island intelligently expands to display context-aware dashboards. Yo
   - ExpandOnHover: false
     $name: Expand on hover
     $description: Expand the island automatically when hovered. If disabled, click to expand.
+  - DoubleClickDelay: '500'
+    $name: Double-click delay (ms)
+    $description: How long to wait for a second click before treating a click as a single click. Windows default is 500 ms.
+    $options:
+      - '25': 25 ms
+      - '50': 50 ms
+      - '75': 75 ms
+      - '100': 100 ms
+      - '150': 150 ms
+      - '200': 200 ms
+      - '300': 300 ms
+      - '400': 400 ms
+      - '500': 500 ms (Windows default)
+      - '650': 650 ms
+      - '800': 800 ms
+      - '1000': 1000 ms
   - AnimationSpeed: fast
     $name: Animation speed
     $description: How fast the island expands and collapses.
@@ -328,6 +344,7 @@ namespace
         bool unhideOnHover = true;
         bool alwaysOnTop = true;
         bool expandOnHover = true;
+        int doubleClickDelay = 500;
         bool autoDpiScale = true;
         bool w11Style = false;
         // Color customization
@@ -734,6 +751,12 @@ namespace
         next.alwaysOnTop = Wh_GetIntSetting(L"Appearance.AlwaysOnTop") != 0;
         const int localExpandOnHover = Wh_GetIntValue(L"ExpandOnHoverOverride", -1);
         next.expandOnHover = localExpandOnHover >= 0 ? (localExpandOnHover != 0) : (Wh_GetIntSetting(L"Appearance.ExpandOnHover") != 0);
+        const std::wstring dblDelay = GetStringSettingCopy(L"Appearance.DoubleClickDelay");
+        next.doubleClickDelay = dblDelay.empty() ? 500 : _wtoi(dblDelay.c_str());
+        if (next.doubleClickDelay < 25 || next.doubleClickDelay > 2000)
+        {
+            next.doubleClickDelay = 500;
+        }
         next.autoDpiScale = Wh_GetIntSetting(L"Appearance.AutoDpiScale") != 0;
         const int overrideOffsetX = Wh_GetIntValue(L"OffsetXOverride", -999999);
         next.offsetX = overrideOffsetX != -999999 ? overrideOffsetX
@@ -6715,10 +6738,11 @@ void OpenRelevantApp() {
                 }
             }
 
-            // Defer opening Action Center by the system double-click interval so
-            // a double-click can be distinguished from a single click. If no
+            // Defer opening Action Center by the configured double-click interval
+            // so a double-click can be distinguished from a single click. If no
             // second click arrives, WM_TIMER fires the single-click action.
-            SetTimer(hwnd, kSingleClickTimerId, GetDoubleClickTime(), nullptr);
+            SetTimer(hwnd, kSingleClickTimerId,
+                     static_cast<UINT>(g_settings.doubleClickDelay), nullptr);
         }
             return 0;
 
