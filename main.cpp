@@ -100,6 +100,7 @@ The Dynamic Island intelligently expands to display context-aware dashboards. Yo
     $description: Makes the entire island and its contents larger or smaller.
     $options:
       - '0.8': 0.8x
+      - '0.9': 0.9x
       - '1.0': 1.0x
       - '1.2': 1.2x
       - '1.5': 1.5x
