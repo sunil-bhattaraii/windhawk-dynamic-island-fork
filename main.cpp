@@ -2551,31 +2551,44 @@ namespace
         return 0;
     }
 
-    int GetWifiSignalQuality()
+    // Queries the current WLAN signal quality.
+    // Returns true when the query completed (outQuality is then the signal
+    // 0-100, or -1 to mean "no connected WLAN interface"). Returns false on a
+    // transient failure (service not ready / stale handle / per-interface query
+    // hiccup) so the caller keeps the last known value instead of blanking the
+    // WiFi icon.
+    bool TryGetWifiSignalQuality(int *outQuality)
     {
-        static HANDLE hClient = nullptr;
-        static bool initFailed = false;
-        if (initFailed)
+        if (!outQuality)
         {
-            return -1;
+            return false;
         }
 
-        if (!hClient)
+        static HANDLE s_wlanClient = nullptr;
+
+        if (!s_wlanClient)
         {
             DWORD negotiatedVersion = 0;
-            if (WlanOpenHandle(2, nullptr, &negotiatedVersion, &hClient) != ERROR_SUCCESS)
+            if (WlanOpenHandle(2, nullptr, &negotiatedVersion, &s_wlanClient) != ERROR_SUCCESS)
             {
-                initFailed = true;
-                return -1;
+                // WLAN AutoConfig may not be ready yet — retry next poll instead
+                // of latching a permanent failure.
+                s_wlanClient = nullptr;
+                return false;
             }
         }
 
         PWLAN_INTERFACE_INFO_LIST ifaceList = nullptr;
-        if (WlanEnumInterfaces(hClient, nullptr, &ifaceList) != ERROR_SUCCESS || !ifaceList)
+        if (WlanEnumInterfaces(s_wlanClient, nullptr, &ifaceList) != ERROR_SUCCESS || !ifaceList)
         {
-            return -1;
+            // The handle may have gone stale (e.g. WlanSvc restarted). Drop it so
+            // the next poll reopens a fresh one, and keep the last good value.
+            WlanCloseHandle(s_wlanClient, nullptr);
+            s_wlanClient = nullptr;
+            return false;
         }
 
+        bool anyConnected = false;
         int signal = -1;
         for (DWORD i = 0; i < ifaceList->dwNumberOfItems; ++i)
         {
@@ -2585,29 +2598,48 @@ namespace
                 continue;
             }
 
+            anyConnected = true;
+
             PWLAN_CONNECTION_ATTRIBUTES connInfo = nullptr;
             DWORD connInfoSize = 0;
             WLAN_OPCODE_VALUE_TYPE opCode;
-            DWORD result = WlanQueryInterface(hClient, &iface.InterfaceGuid,
+            DWORD result = WlanQueryInterface(s_wlanClient, &iface.InterfaceGuid,
                                               wlan_intf_opcode_current_connection,
                                               nullptr, &connInfoSize,
                                               reinterpret_cast<PVOID *>(&connInfo), &opCode);
             if (result == ERROR_SUCCESS && connInfo)
             {
                 // wlanSignalQuality is already a 0-100 percentage from the driver.
-                signal = static_cast<int>(connInfo->wlanAssociationAttributes.wlanSignalQuality);
+                signal = ClampInt(
+                    static_cast<int>(connInfo->wlanAssociationAttributes.wlanSignalQuality),
+                    0, 100);
                 WlanFreeMemory(connInfo);
                 break;
             }
         }
 
         WlanFreeMemory(ifaceList);
-        return signal;
+
+        // Connected but every per-interface query failed: transient, keep last value.
+        if (anyConnected && signal < 0)
+        {
+            return false;
+        }
+
+        *outQuality = signal; // -1 here means a confirmed "no connected WLAN link".
+        return true;
     }
 
     void UpdateWifiSnapshot()
     {
-        const int quality = GetWifiSignalQuality();
+        int quality = -1;
+        if (!TryGetWifiSignalQuality(&quality))
+        {
+            // Transient failure: hold the last known value so a single bad poll
+            // doesn't hide the WiFi icon for the full 5s poll interval.
+            return;
+        }
+
         std::lock_guard lock(g_stateMutex);
         g_state.system.wifiSignalPercent = quality;
     }
