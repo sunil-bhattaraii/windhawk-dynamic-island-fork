@@ -12,7 +12,13 @@
 
 // ==WindhawkModReadme==
 /*
-# Dynamic Island for Windows
+# Dynamic Island for Windows - Customized
+
+> **This is a customized / forked version of the original
+> [Dynamic Island for Windows](https://github.com/devcode90/Dynamic-Island-for-Windows)
+> by [devcode90 (Linus)](https://github.com/devcode90).**
+> It builds on the original mod and adds extra input shortcuts and settings.
+> See the "Customizations in This Fork" section below for what's different.
 
 A fluid, living overlay inspired by Apple's Dynamic Island, bringing a beautiful, highly-responsive UI to your Windows desktop. Built natively with hardware-accelerated Direct2D rendering for a buttery-smooth 60 FPS experience.
 
@@ -47,21 +53,39 @@ The Dynamic Island intelligently expands to display context-aware dashboards. Yo
 
 ## ⚙️ Usage & Settings
 
-- **Hover & Scroll:** Hover over the island to seamlessly expand it. Use your mouse scroll wheel to swipe between the Media, Calendar, and Weather tabs.
+- **Single click:** Opens the native Windows **Action Center** (simulates `Win+A`).
+- **Double click:** Opens the native Windows **Notification Center** (simulates `Win+N`).
+- **Middle click:** Toggles the default audio device mute.
+- **Hover & Scroll:** Hover over the island to seamlessly expand it. Use your mouse scroll wheel to swipe between the dashboard tabs.
 - **Right-Click Menu:** Right-click the island to access Theme presets, Transparency settings, and to pin the island open.
-- **Windhawk Settings:** Visit the Mod Settings tab to change the island's Position, Size Scale, Animation Speed, and toggle specific modules. You can also perfectly align the island using the new `Offset X` and `Offset Y` settings, and even select exactly which monitor the island should appear on (including a brand new "Follow Mouse" mode!).
+- **Windhawk Settings:** Visit the Mod Settings tab to change the island's Position, Size Scale, Animation Speed, Double-click delay, and toggle specific modules. You can also perfectly align the island using the `Offset X` and `Offset Y` settings, and select exactly which monitor the island should appear on (including a "Follow Mouse" mode).
 - **Notifications:** To use the notification module, you need to add `explorer.exe` to the process inclusion list in the Advanced tab of the mod settings and restart the mod.
+
+---
+
+## 🎛️ Customizations in This Fork
+
+This fork keeps the original experience but changes how clicks are handled and adds a few new options:
+
+- **Single vs. double click actions:**
+  - A **single click** now opens the Windows **Action Center** (`Win+A`).
+  - A **double click** now opens the Windows **Notification Center** (`Win+N`).
+  - A single click is **deferred** until the double-click window expires, so a double-click is never mistaken for a single click.
+- **New `Double-click delay (ms)` setting:** Choose how long the island waits for a possible second click (25 ms – 1000 ms). The Windows default is 500 ms.
+- **New `0.9x` Size scale option** for finer control over the island's size.
 
 ---
 
 ## 📝 Feedback & Credits
 
 ### Feedback / Support / Bug Reports
-- Please use [Windhawk Mods Issues](https://github.com/ramensoftware/windhawk-mods/issues) or [dynamic-island-for-windows issues](https://github.com/devcode90/dynamic-island-for-windows/issues) to report bugs, request features, or share feedback.
+- For issues specific to **this customized fork**, report them against this fork's repository.
+- For issues with the **original mod**, please use [Windhawk Mods Issues](https://github.com/ramensoftware/windhawk-mods/issues) or [dynamic-island-for-windows issues](https://github.com/devcode90/dynamic-island-for-windows/issues).
 - Clear descriptions, screenshots, or steps to reproduce help improve fixes and updates.
 - Suggestions for UI/UX or new integrations are always welcome.
 
 ### Credits
+- **[devcode90 (Linus)](https://github.com/devcode90)**: Original author of [Dynamic Island for Windows](https://github.com/devcode90/Dynamic-Island-for-Windows), which this fork is based on.
 - **[ciizerr @GitHub](https://github.com/ciizerr)**: Improved the UI by refining layout alignment, fixing dashboard scaling, and enhancing calendar and weather module integration.
 
 */
@@ -123,7 +147,7 @@ The Dynamic Island intelligently expands to display context-aware dashboards. Yo
   - AutoDpiScale: true
     $name: Auto DPI scaling
     $description: Automatically scales the island to match your monitor's DPI. Recommended for 4K screens.
-  - W11Style: false
+  - W11Style: true
     $name: Native Windows 11 style
     $description: Changes the shape from an Apple pill to a Windows 11 rounded box.
   - AlwaysOnTop: true
@@ -176,18 +200,18 @@ The Dynamic Island intelligently expands to display context-aware dashboards. Yo
   - TextSecondaryColor: "#888888"
     $name: Secondary text color
     $description: Hex color for artist names and muted labels.
-  - TintIntensity: 72
+  - TintIntensity: 0
     $name: Background tint intensity
     $description: 0 to 100. Controls how dark the background tint behind the island is.
-  - PillOpacity: 96
+  - PillOpacity: 80
     $name: Pill transparency
     $description: 35 to 100. Lower values make the island more see-through.
   $name: Colors & Theming
 - Modules:
-  - Media: true
+  - Media: false
     $name: Media module
     $description: Shows album art, song info, and playback controls when music is playing.
-  - Clipboard: true
+  - Clipboard: false
     $name: Clipboard module
     $description: Shows a quick preview of the text or images you just copied.
   - Battery: true
