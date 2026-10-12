@@ -338,6 +338,21 @@ namespace
         BottomCenter,
     };
 
+    // Which edge of the island stays fixed while it resizes.
+    enum class HAnchor
+    {
+        Left,
+        Center,
+        Right,
+    };
+
+    enum class VAnchor
+    {
+        Top,
+        Center,
+        Bottom,
+    };
+
     enum class AccentMode
     {
         Auto,
@@ -577,6 +592,8 @@ namespace
     std::atomic<bool> g_dragCandidate = false;
     std::atomic<bool> g_isDragging = false;
     std::atomic<bool> g_ignoreNextButtonUp = false; // set by WM_LBUTTONDBLCLK
+    bool g_windowPlaced = false;                    // false until the island is placed once
+    bool g_forceHomePlacement = true;               // re-home after settings changes
     POINT g_dragCandidateStart = {};
     int g_dragStartOffsetX = 0;
     int g_dragStartOffsetY = 0;
@@ -837,6 +854,7 @@ namespace
 
         bool cityChanged = next.weatherCity != g_settings.weatherCity;
         g_settings = next;
+        g_forceHomePlacement = true;
         g_layoutDirty = true;
         if (cityChanged && g_settingsChangedEvent)
         {
@@ -900,26 +918,101 @@ namespace
     void PositionOverlayWindow(HWND hwnd, int width, int height)
     {
         RECT work = GetAnchorWorkRect();
-        int x = work.left + (work.right - work.left - width) / 2;
-        int y = work.top + 8;
+        const int workWidth = work.right - work.left;
+        const int workHeight = work.bottom - work.top;
+        const int workCenterX = work.left + workWidth / 2;
+        const int workCenterY = work.top + workHeight / 2;
 
-        switch (g_settings.position)
+        int x = 0;
+        int y = 0;
+
+        // While dragging the pill, or right after a settings change, place it at
+        // the configured home anchor plus the drag offset. This is also used for
+        // the very first placement.
+        if (g_isDragging.load() || g_forceHomePlacement || !g_windowPlaced)
         {
-        case Position::TopLeft:
-            x = work.left + 16;
+            g_forceHomePlacement = false;
+            g_windowPlaced = true;
+
+            x = work.left + (workWidth - width) / 2;
             y = work.top + 8;
-            break;
-        case Position::TopRight:
-            x = work.right - width - 16;
-            y = work.top + 8;
-            break;
-        case Position::BottomCenter:
-            x = work.left + (work.right - work.left - width) / 2;
-            y = work.bottom - height - 40;
-            break;
-        case Position::TopCenter:
-        default:
-            break;
+
+            switch (g_settings.position)
+            {
+            case Position::TopLeft:
+                x = work.left + 16;
+                y = work.top + 8;
+                break;
+            case Position::TopRight:
+                x = work.right - width - 16;
+                y = work.top + 8;
+                break;
+            case Position::BottomCenter:
+                x = work.left + (workWidth - width) / 2;
+                y = work.bottom - height - 40;
+                break;
+            case Position::TopCenter:
+            default:
+                break;
+            }
+
+            x += g_settings.offsetX;
+            y += g_settings.offsetY;
+        }
+        else
+        {
+            // Otherwise keep the island exactly where it currently is and fix
+            // the edges nearest the screen edges, so it grows away from the
+            // nearest corner (toward the screen center) without moving.
+            const int band = 8;
+            const int approxCenterX =
+                (g_settings.position == Position::TopLeft)    ? work.left + 16 + g_settings.offsetX
+                : (g_settings.position == Position::TopRight) ? work.right - 16 + g_settings.offsetX
+                                                              : workCenterX + g_settings.offsetX;
+            const int approxCenterY =
+                (g_settings.position == Position::BottomCenter)
+                    ? work.bottom - 40 - 18 + g_settings.offsetY
+                    : work.top + 8 + 18 + g_settings.offsetY;
+
+            const HAnchor h =
+                (approxCenterX < workCenterX - band)   ? HAnchor::Left
+                : (approxCenterX > workCenterX + band) ? HAnchor::Right
+                                                       : HAnchor::Center;
+            const VAnchor v =
+                (approxCenterY < workCenterY - band)   ? VAnchor::Top
+                : (approxCenterY > workCenterY + band) ? VAnchor::Bottom
+                                                       : VAnchor::Center;
+
+            RECT current = {};
+            GetWindowRect(hwnd, &current);
+
+            switch (h)
+            {
+            case HAnchor::Left:
+                x = current.left;
+                break;
+            case HAnchor::Right:
+                x = current.right - width;
+                break;
+            case HAnchor::Center:
+            default:
+                x = (current.left + current.right) / 2 - width / 2;
+                break;
+            }
+
+            switch (v)
+            {
+            case VAnchor::Top:
+                y = current.top;
+                break;
+            case VAnchor::Bottom:
+                y = current.bottom - height;
+                break;
+            case VAnchor::Center:
+            default:
+                y = (current.top + current.bottom) / 2 - height / 2;
+                break;
+            }
         }
 
         HWND zOrder = g_settings.alwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST;
@@ -938,8 +1031,6 @@ namespace
             }
         }
 
-        x += g_settings.offsetX;
-        y += g_settings.offsetY;
         SetWindowPos(hwnd, zOrder, x, y, width, height,
                      SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
     }
